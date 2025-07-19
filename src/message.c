@@ -125,6 +125,11 @@ do_input_line(boolean is_msg, int row, int col, char *prompt, char *insert,
 #if defined( JAPAN )
     short k;
     char kanji[MAX_TITLE_LENGTH];
+    char mstr[3];
+#if defined( EUC ) && defined( TERM_UTF8 )
+    int len = 0, j = 0;
+    char inputbuf[7];
+#endif
 #endif /* JAPAN */
 
     if (is_msg) {
@@ -203,12 +208,27 @@ do_input_line(boolean is_msg, int row, int col, char *prompt, char *insert,
 	    (ch >= 0x81 && ch <= 0x9f || ch >= 0xe0 && ch <= 0xfc) && (i < MAX_TITLE_LENGTH - 3)
 #endif /* not EUC */
 	    ) {
+#if defined( EUC ) && defined( TERM_UTF8 )
+	    /* 入力された最初の1文字からUTF-8文字のバイト数を推測し、 */
+	    /* そのバイト数分入力を読み込み、EUCに変換する            */
+	    len = utf8len(ch);
+	    memset(inputbuf, 0, 7);
+	    inputbuf[0] = ch;
+	    j = 1;
+	    while (len-- > 1) {
+		inputbuf[j++] = rgetchar();
+	    }
+	    convert_utf8_to_eucjp(inputbuf, buf + i, 3);
+#else
 	    buf[i] = ch;
 	    buf[i + 1] = rgetchar();
+#endif
 	    kanji[i] = kanji[i + 1] = 1;
 	    if (do_echo) {
-		addch_rogue(buf[i]);
-		addch_rogue(buf[i + 1]);
+		mstr[0] = buf[i];
+		mstr[1] = buf[i + 1];
+		mstr[2] = '\0';
+		addstr_rogue(mstr);
 	    }
 	    i += 2;
 	}

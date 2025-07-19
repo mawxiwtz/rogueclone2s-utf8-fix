@@ -29,4 +29,5 @@ rogue_SOURCES = \
 rogue_CFLAGS = \
 	-DJAPAN \
 	-DEUC \
+	-DTERM_UTF8 \
 	-DTOPSCO

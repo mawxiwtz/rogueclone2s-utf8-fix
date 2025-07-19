@@ -7,6 +7,7 @@
 #include <curses.h>
 #include <iconv.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #include "rogue.h"
 #include "display.h"
@@ -208,6 +209,117 @@ mvaddch_rogue(int y, int x, const chtype ch)
 }
 
 /*
+ * utf8len
+ * UTF8文字の先頭の1バイト ch から、UTF8文字のバイト数を返す
+ *   0x00 - 0x7f: 1byte
+ *   0x80 - 0xbf: - (マルチバイト文字の2バイト目以降、便宜上1bytes)
+ *   0xc0 - 0xdf: 2bytes
+ *   0xe0 - 0xef: 3bytes
+ *   0xf0 - 0xf7: 4bytes
+ *   0xf8 - 0xfb: 5bytes
+ *   0xfc - 0xfd: 6bytes
+ *   0xfe - 0xff: - (便宜上6bytes)
+ */
+int
+utf8len(unsigned char ch)
+{
+    static unsigned char utf8len_table[] = { 0xbf, 0xdf, 0xef, 0xf7, 0xfb, 0xff };
+    int len = 1;
+
+    while (len <= 6) {
+	if (ch <= utf8len_table[len-1]) break;
+	len++;
+    }
+    return len;
+}
+
+/*
+ * convert_encoding
+ * 文字エンコーディングの変換を行う
+ */
+int
+convert_encoding(iconv_t conv, const char *src, char *dest, size_t dest_size)
+{
+    size_t inbytesleft;
+    size_t outbytesleft = dest_size - 1;
+
+    char *inbuf = (char *)src;
+    char *outbuf = dest;
+    char *outbuf_start = dest;
+
+    size_t result;
+
+    if (!src || !dest || dest_size == 0) {
+        return -1;
+    }
+
+    inbytesleft = strlen(src);
+
+    result = iconv(conv, &inbuf, &inbytesleft, &outbuf, &outbytesleft);
+    if (result == (size_t)-1) {
+        /* perror("iconv"); */
+        /* iconv_close(conv); */
+        return -1;
+    }
+
+    *outbuf = '\0';
+
+    /* iconv_close(conv); */
+    return 0;
+}
+
+/*
+ * convert_eucjp_to_utf8
+ * convert_encoding のラッパー関数
+ * EUC および TERM_UTF8 が定義されている時のみ EUC を UTF-8 に変換する
+ * それ以外の時は無変換で出力する。
+ */
+int
+convert_eucjp_to_utf8(const char *src, char *dest, size_t dest_size)
+{
+#if defined( EUC ) && defined( TERM_UTF8 )
+    static iconv_t conv_e2u = NULL;
+
+    if (!conv_e2u) {
+        conv_e2u = iconv_open("UTF-8//TRANSLIT", "EUC-JP");
+        if (conv_e2u == (iconv_t)-1) {
+            /* perror("iconv_open"); */
+            return -1;
+        }
+    }
+    return convert_encoding(conv_e2u, src, dest, dest_size);
+#else
+    memcpy(dest, src, dest_size);
+    return 0;
+#endif
+}
+
+/*
+ * convert_utf8_to_eucjp
+ * EUC および TERM_UTF8 が定義されている時のみ UTF-8 を EUC に変換する
+ * それ以外の時は無変換で出力する。
+ */
+int
+convert_utf8_to_eucjp(const char *src, char *dest, size_t dest_size)
+{
+#if defined( EUC ) && defined( TERM_UTF8 )
+    static iconv_t conv_u2e = NULL;
+
+    if (!conv_u2e) {
+        conv_u2e = iconv_open("EUC-JP//TRANSLIT", "UTF-8");
+        if (conv_u2e == (iconv_t)-1) {
+            /* perror("iconv_open"); */
+            return -1;
+        }
+    }
+    return convert_encoding(conv_u2e, src, dest, dest_size);
+#else
+    memcpy(dest, src, dest_size);
+    return 0;
+#endif
+}
+
+/*
  * addstr_rogue
  * addstr のラッパー関数
  * 文字列のカラー表示も一括して請け負う
@@ -218,10 +330,11 @@ addstr_rogue(const char *str)
 #if defined( COLOR )
     attrset(COLOR_PAIR(0));
 #endif /* COLOR */
-    return addstr(str);
+    char msg[ROGUE_COLUMNS];
+    convert_eucjp_to_utf8(str, msg, ROGUE_COLUMNS);
+    return addstr(msg);
 }
 
-static iconv_t conv=NULL;
 /*
  * mvaddstr_rogue
  * mvaddstr のラッパー関数
@@ -247,23 +360,9 @@ mvaddstr_rogue(int y, int x, const char *str)
     }
 #endif /* COLOR */
 
-    size_t inleft=strlen(str), outleft=1024;
-    char *inptr= str;
-    char *outbuf=malloc(outleft);
-    memset(outbuf, 0, 1024);
-    char *outptr=outbuf;
-
-    if(!conv) {
-      conv=iconv_open("UTF-8//TRANSLIT", "EUC-JP");
-    }else {
-      iconv(conv, NULL,NULL,NULL,NULL);
-    }
-    int n = iconv(conv, 
-		  &inptr, &inleft, 
-		  &outptr, &outleft);
-    int res = mvaddstr(y, x, outbuf);
-    free(outbuf);
-    return res;
+    char msg[ROGUE_COLUMNS];
+    convert_eucjp_to_utf8(str, msg, ROGUE_COLUMNS);
+    return mvaddstr(y, x, msg);
 }
 
 /*

@@ -166,6 +166,8 @@ player_init(void)
 void
 clean_up(char *estr)
 {
+    char msg[ROGUE_COLUMNS+1];
+
     if (save_is_interactive) {
 	if (init_curses) {
 	    move(ROGUE_LINES - 1, 0);
@@ -177,7 +179,8 @@ clean_up(char *estr)
 	}
 	endwin();
 	printf("\r\n");
-	printf(estr);
+	convert_eucjp_to_utf8(estr, msg, ROGUE_COLUMNS);
+	printf(msg);
 	printf("\r\n");
     }
     md_exit(0);

@@ -355,7 +355,8 @@ help(void)
     wait_for_ack();
 
     /* 保持した画面を復帰させる */
-    for (lines = 0; lines < ROGUE_LINES; lines++) {
+    clear();
+    for (lines = 1; lines < ROGUE_LINES; lines++) {
 	move(lines, 0);
 	if (lines > 0 && lines < ROGUE_LINES - 1) {
 	    for (columns = 0; columns < ROGUE_COLUMNS; columns++) {
@@ -363,10 +364,7 @@ help(void)
 	    }
 	} else {
 	    /* メッセージデータの最後に末端記号を付加する */
-	    strncpy(disp_message, descs[lines], ROGUE_COLUMNS);
-	    disp_message[ROGUE_COLUMNS] = '\0';
-
-	    addstr_rogue(disp_message);
+	    print_stats(STAT_ALL);
 	}
     }
     refresh();
@@ -561,6 +559,7 @@ void
 doshell(void)
 {
     char *cmd;
+    char msg[ROGUE_COLUMNS+1];
 
     if ((cmd = getenv("SHELL")) == NULL) {
 	cmd = "/bin/sh";
@@ -572,7 +571,8 @@ doshell(void)
 	chdir(org_dir);
     }
     md_ignore_signals();
-    printf(mesg[157]);
+    convert_eucjp_to_utf8(mesg[157], msg, ROGUE_COLUMNS);
+    printf(msg);
     printf("\r\n");
     system(cmd);
     md_heed_signals();
